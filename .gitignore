@@ -1,11 +1,13 @@
 node_modules/
 dist/
 dist-prethink/
+dist-prethink-widget/
 .runtime/
 *.log
 .env
 .env.*
 !.env.example
 test-results/
+live-test-results/
 playwright-report/
 .DS_Store

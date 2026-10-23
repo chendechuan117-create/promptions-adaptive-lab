@@ -53,15 +53,19 @@ npm run test:ui
 
 自动检查覆盖取消与迟到响应、重试、原目标和补充的传递、两种版本、导出及手机宽度。它们验证程序行为，不证明真人使用效率或模型语义质量。
 
-## ChatGPT 插件方向
+## ChatGPT 卡片
 
-建议用 MCP 服务与 MCP Apps 卡片承载“主动开启预思考 → 卡片内延伸 → 交还 ChatGPT 回答”。另有独立的**固定数据接入探针**，用于测试宿主卡片、点击更新与最终交接。探针不调用 DeepSeek，不等于完整 AI 插件；手机 ChatGPT 实际可用性仍需接入验收。
+动态 MCP Apps 卡片复用本项目的 React 界面与默认提示词：任意问题、手机双列、单点连续延伸、多选、自由补充和历史。DeepSeek 只生成联想方向；最后由用户点击“交给 ChatGPT 回答”。原独立网页仍保留自己的生成答案入口。
 
-运行探针与验证边界见 [接入探针说明](probe/README.md)；完整路线和官方文档见 [ChatGPT 插件接入提案](docs/chatgpt-plugin-plan.md)。
+卡片通过宿主桥调用工具，每次只提交当前选择和补充。服务端在内存中接续当前任务，两小时过期并定期清理；密钥留在服务端。默认模型调用预算为零，必须显式配置有限预算才能调用。此版本是限额试运行，尚无账户认证，不适合开放公共使用。
+
+构建、运行、账户连接和验收边界见 [动态卡片说明](docs/chatgpt-live.md)。固定数据探针仍保留为独立对照，见 [接入探针说明](probe/README.md)；原路线及官方依据见 [ChatGPT 接入设计](docs/chatgpt-plugin-plan.md)。本地模拟宿主和真实模型测试均不等于当前 ChatGPT 手机版本已验收。
 
 ## 代码结构
 
 - `src/prethink.tsx`、`src/prethink.css`：手机界面与交互状态。
+- `src/prethink-transport.ts`、`src/prethink-mcp.ts`：HTTP 与 MCP Apps 传输，共享同一界面。
+- `probe/live-server.mjs`、`probe/live-runtime.mjs`：动态 MCP 入口、任务快照和有限调用预算。
 - `server/prethink.mjs`：提示词、输入输出校验、baseline/scoped。
 - `server/deepseek-http.mjs`：受限的 DeepSeek Responses SSE 传输。
 - `server/prethink-server.mjs`、`server/jobs.mjs`：HTTP 服务、取消与请求版本控制。

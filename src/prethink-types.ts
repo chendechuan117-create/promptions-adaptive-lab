@@ -1,0 +1,13 @@
+export type CueOption = { label: string; hint: string; id?: string };
+export type Round = { selected: CueOption[]; note: string };
+export type Metrics = { elapsedMs?: number; [key: string]: unknown };
+export type Mode = 'cues' | 'answer';
+export type Variant = 'baseline' | 'scoped';
+export type RequestPayload = { mode: Mode; variant: Variant; goal: string; rounds: Round[] };
+export type RequestBody = RequestPayload & { clientId: string; requestId: string; version: number };
+type ResponseIdentity = { requestId: string; version: number; variant?: Variant; metrics?: Metrics };
+export type CueResponse = ResponseIdentity & { mode: 'cues'; options: CueOption[]; scope?: string };
+export type AnswerResponse = ResponseIdentity & { mode: 'answer'; answer: string; usedAssociations: string[] };
+export type Health = { provider: string; model: string; dataMode: string };
+export type CancellationBody = { clientId: string; requestId: string; version: number; variant?: Variant };
+export type HandoffBody = { goal: string; rounds: Round[] };

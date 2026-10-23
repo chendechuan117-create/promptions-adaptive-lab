@@ -149,3 +149,54 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* The embedded view shares the original cards and controls with a smaller shell. */
+:root[data-prethink-embedded] {
+  color-scheme: light dark;
+  font-family: var(--font-sans, Inter, ui-sans-serif, system-ui, sans-serif);
+  --ink: var(--color-text-primary, #25312d);
+  --muted: var(--color-text-secondary, #68756e);
+  --line: var(--color-border-primary, #dce5df);
+  --paper: var(--color-background-primary, #ffffff);
+  --wash: var(--color-background-secondary, #edf3ef);
+  color: var(--ink);
+  background: var(--paper);
+}
+:root[data-prethink-embedded] body { min-width: 280px; min-height: 0; }
+.app-shell.embedded { width: min(100%, 720px); min-height: 0; padding: max(10px, env(safe-area-inset-top)) 10px max(12px, env(safe-area-inset-bottom)); }
+.embedded .main-card { padding: 14px; color: var(--ink); }
+.embedded .journey-head { margin-bottom: 14px; }
+.embedded .journey-goal .value { font-size: 15px; }
+.embedded .journey-tools { gap: 0; }
+.embedded .journey-tools .quiet-button { min-height: 32px; padding: 5px 8px; font-size: 12px; }
+.embedded .section-heading { font-size: 19px; }
+.embedded .section-copy { margin-bottom: 11px; }
+.embedded .cue-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.embedded .cue-option { min-height: 94px; padding: 10px; gap: 8px; background: var(--paper); border-color: var(--line); }
+.embedded .cue-option:hover:not(:disabled), .embedded .cue-option.selected { background: var(--wash); border-color: #7da58c; }
+.embedded .cue-hint { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.embedded .cue-controls { background: var(--paper); border-color: var(--line); }
+.embedded .multi-toggle, .embedded .goal-input, .embedded .note-input { color: var(--ink); background: var(--paper); border-color: var(--line); }
+.embedded .secondary-button { color: var(--ink); background: var(--wash); border-color: var(--line); }
+.embedded .note-box { margin-top: 15px; padding-top: 14px; border-color: var(--line); }
+.embedded .note-input { min-height: 68px; }
+.embedded .draft-summary, .embedded .history-item, .embedded .loading-row { color: var(--ink); background: var(--wash); }
+.embedded .history { border-color: var(--line); }
+.embedded .history summary { color: var(--ink); }
+.embedded .status-region { line-height: 1.55; }
+:root[data-prethink-embedded][data-theme="dark"] {
+  --ink: var(--color-text-primary, #e3eee9);
+  --muted: var(--color-text-secondary, #b3c4bb);
+  --line: var(--color-border-primary, #40534a);
+  --paper: var(--color-background-primary, #17231e);
+  --wash: var(--color-background-secondary, #24382e);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-prethink-embedded]:not([data-theme="light"]) {
+    --ink: var(--color-text-primary, #e3eee9);
+    --muted: var(--color-text-secondary, #b3c4bb);
+    --line: var(--color-border-primary, #40534a);
+    --paper: var(--color-background-primary, #17231e);
+    --wash: var(--color-background-secondary, #24382e);
+  }
+}
