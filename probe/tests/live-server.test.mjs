@@ -49,7 +49,17 @@ test('MCP discovery, free start/legacy alias, arbitrary goal+3 ordered rounds re
   assert.equal((await client.callTool({ name: 'start_prethink_probe', arguments: {} })).structuredContent.goal, '');
   assert.equal(calls.length, 0);
   assert.equal(runtime.stats().used, 0);
-  assert.match((await client.readResource({ uri: LIVE_RESOURCE_URI })).contents[0].text, /mock widget/);
+  const currentResource = (await client.readResource({ uri: LIVE_RESOURCE_URI })).contents[0];
+  const legacyResource = (await client.readResource({ uri: 'ui://thoughtscout/probe.html' })).contents[0];
+  assert.match(currentResource.text, /mock widget/);
+  assert.equal(currentResource.uri, LIVE_RESOURCE_URI);
+  assert.equal(legacyResource.uri, 'ui://thoughtscout/probe.html');
+  assert.deepEqual({ ...legacyResource, uri: LIVE_RESOURCE_URI }, currentResource);
+  assert.equal(legacyResource.mimeType, 'text/html;profile=mcp-app');
+  const resources = (await client.listResources()).resources;
+  assert.deepEqual(resources.map(resource => resource.uri), [LIVE_RESOURCE_URI, 'ui://thoughtscout/probe.html']);
+  assert.deepEqual(resources[0]._meta, resources[1]._meta);
+  assert.equal(resources[0].mimeType, resources[1].mimeType);
   const first = request();
   let req = first;
   let response = await client.callTool({ name: 'generate_prethink_cues', arguments: req });

@@ -34,10 +34,14 @@ const safely = fn => async args => {
 
 export function createLiveMcpServer({ runtime = createLiveRuntime(), widgetHtml } = {}) {
   const server = new McpServer({ name: 'thoughtscout-live-prethinking', version: '0.2.0' });
-  registerAppResource(server, 'thoughtscout-prethinking', LIVE_RESOURCE_URI,
-    { description: '自主输入目标、连续联想与用户主动交接。', _meta: { ui: uiMeta } },
-    async () => ({ contents: [{ uri: LIVE_RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE,
-      text: widgetHtml ?? readFileSync(new URL('../dist-prethink-widget/widget.html', import.meta.url), 'utf8'), _meta: { ui: uiMeta } }] }));
+  // Keep the prior resource URI readable while hosts refresh cached tool metadata.
+  // Both URIs serve the current dynamic widget; tool descriptions/schemas still need refresh.
+  for (const [name, uri] of [['thoughtscout-prethinking', LIVE_RESOURCE_URI], ['thoughtscout-prethinking-legacy-uri', 'ui://thoughtscout/probe.html']]) {
+    registerAppResource(server, name, uri,
+      { description: '自主输入目标、连续联想与用户主动交接。', _meta: { ui: uiMeta } },
+      async () => ({ contents: [{ uri, mimeType: RESOURCE_MIME_TYPE,
+        text: widgetHtml ?? readFileSync(new URL('../dist-prethink-widget/widget.html', import.meta.url), 'utf8'), _meta: { ui: uiMeta } }] }));
+  }
   const start = initialGoal => reply({ mode: 'start', goal: initialGoal, provider: 'deepseek', model: 'deepseek-flash' });
   const startConfig = {
     title: '开启预思考',

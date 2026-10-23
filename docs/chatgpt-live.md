@@ -30,7 +30,11 @@ npm run test:chatgpt
 
 通过 ChatGPT 插件页的 **添加自定义 MCP 服务器** 注册自己的 HTTPS `/mcp` 端点。不要把带 `mcp.json` 的导入包当作手机支持保证：官方对工作区导入明确有“仅桌面”限制，即使配置远程 HTTPS 也适用。[连接说明](https://developers.openai.com/plugins/deploy/connect-chatgpt#add-the-mcp-server)、[导入限制](https://learn.chatgpt.com/docs/enterprise/plugin-management#desktop-only-plugins)
 
-更新旧固定探针连接后，需要刷新工具列表。新的模型可见入口是 `start_prethinking`；`start_prethink_probe` 只是兼容打开入口，现在也展示动态卡片。其余数据工具仅供卡片调用，避免每次点击重建一个新 iframe。保留原连接即可，无需重复创建另一个插件。实际账户的刷新入口及宿主行为仍应核对。
+更新旧固定探针连接后，在连接详情点击 **Refresh**，确认工具列表包含 `start_prethinking`，然后新开对话；浏览器刷新页面和卡片内“重试”不能代替这一步。[官方元数据刷新步骤](https://developers.openai.com/plugins/deploy/connect-chatgpt#refresh-metadata)
+
+新的模型可见入口是 `start_prethinking`；`start_prethink_probe` 保留名称作为打开入口，现在也展示动态卡片，但其返回结构已由固定探针结构改为动态启动结构，因此不保证未刷新旧工具 schema 的宿主可直接使用。其余数据工具仅供卡片调用，避免每次点击重建一个新 iframe。保留原连接即可，无需重复创建另一个插件。
+
+服务同时注册 `ui://thoughtscout/prethinking-v1.html` 和旧地址 `ui://thoughtscout/probe.html`，两者返回同一动态卡片，避免旧资源引用直接出现 `Resource not found`。这个别名只修复资源寻址，不会刷新 ChatGPT 缓存的工具说明、schema 或旧 iframe。手机实际加载和最终交接仍需在刷新后的新对话验收。
 
 ## 当前任务的数据流
 
