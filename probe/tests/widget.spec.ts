@@ -117,6 +117,8 @@ test('375px viewport fits, text is escaped, and note has a 400-character boundar
   await expect(frame.locator('img')).toHaveCount(0);
   expect(await page.frames()[1].evaluate(() => (window as any).injected)).toBeUndefined();
   expect(await frame.getByRole('textbox').getAttribute('maxlength')).toBe('400');
+  // Host font metrics vary across platforms; monospace makes the unbroken escaped token overflow without wrapping.
+  await page.frames()[1].evaluate(() => document.documentElement.style.setProperty('--font-sans', 'monospace'));
   const widths = await page.frames()[1].evaluate(() => ({ actual: document.documentElement.scrollWidth, available: window.innerWidth }));
   expect(widths.actual).toBeLessThanOrEqual(widths.available);
   await frame.getByRole('button', { name: '交给 ChatGPT 回答' }).focus();

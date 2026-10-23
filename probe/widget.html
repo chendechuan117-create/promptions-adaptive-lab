@@ -8,7 +8,7 @@
     :root { color-scheme: light dark; font-family: var(--font-sans, system-ui, sans-serif); color: var(--color-text-primary, #1b2927); background: var(--color-background-primary, #f9fbfa); }
     * { box-sizing: border-box; }
     body { margin: 0; }
-    main { max-width: 720px; margin: auto; padding: 24px; padding-top: max(24px, env(safe-area-inset-top)); padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+    main { max-width: 720px; min-width: 0; overflow-wrap: anywhere; margin: auto; padding: 24px; padding-top: max(24px, env(safe-area-inset-top)); padding-bottom: max(24px, env(safe-area-inset-bottom)); }
     .badge { display: inline-block; font-size: 12px; color: #236456; background: #e5f2ed; padding: 6px 10px; border-radius: 20px; }
     h1 { font-size: 23px; line-height: 1.45; margin: 18px 0 8px; }
     h2 { font-size: 17px; margin: 22px 0 10px; }
