@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-prethink/
+.runtime/
+*.log
+.env
+.env.*
+!.env.example
+test-results/
+playwright-report/
+.DS_Store

@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "release": "0.1.0",
+  "type": "independent allowlisted source export",
+  "excludes": [
+    "private Git history",
+    "runtime credentials and data",
+    "conversation records",
+    "private evaluation outputs",
+    "private database and access configuration",
+    "installed dependencies and build outputs"
+  ],
+  "files": {
+    ".env.example": "a63932f87e67dadc2d5ab5a5c0771f3c1e4086566b24e7bb6126ea0d6d76d257",
+    ".github/workflows/ci.yml": "0c71de120918ec30a19bfef6b3dda952451a8921e34c0d3508b4b65b5b491bce",
+    ".gitignore": "ee09711a622e9cc5d22a9264473e4e42f00874778f099a514afa0ddf3feb7469",
+    "LICENSE": "75c56a5c34c015a369a1a67aa2907291d428948a36014b1737dcfc706eefb802",
+    "README.md": "8785a289165cac51781b893c052222ab65e71681a3de7042402969b24f5dd006",
+    "SECURITY.md": "c5734edc000f0fdb1ba91ad4599e45fc87c9acd46044a72a324feb1a31aaf6ef",
+    "THIRD_PARTY_NOTICES.md": "caebf31bc0133a4d6182dd71d5834b8f365c89a1c54d8afb6968405f04a423b2",
+    "docs/chatgpt-plugin-plan.md": "0ff04c54dfc98de2d444a1b43a49315ef665c9e5843a21855d87a22ba68fba02",
+    "licenses/Microsoft-Promptions-MIT.txt": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+    "package-lock.json": "a32592e27b79e0ff50cf3b06b22e412e9f5700595b76286f62490b1134183fc6",
+    "package.json": "c2f00df44b5afabba35db5a964d6828d7139d69a755b51dafdfced7a5ac93b6a",
+    "playwright.config.ts": "18cf7ca408bff428c81e0b2ed4d752f250f41a763a1b8f8aaf7aac010ea9b95f",
+    "prethink.html": "564ac09f2dfbd352a5acf71c72bece223b56653d721be5e840f8a64a9a80292d",
+    "server/deepseek-http.mjs": "9a01799abbcb731b47bf969a20c98c467f2ebc72fc3b2d5cbd560805bad39071",
+    "server/jobs.mjs": "2a8ce6edc2c5868f703c792e5e1239e3d3601d7216c77959b541d3fc91cbdc9a",
+    "server/prethink-server.mjs": "09f5bb90b17699da27f3aacc9eb46e196ee8e4639d2778f244456ae7e28da661",
+    "server/prethink.mjs": "5d84fe84b83845ea1ff090720881297791e82513b38e0a946b669e5e7ffbf95e",
+    "src/prethink.css": "851bc23cdcaf6b35e31fb490b2623476db19dbe76b9d184af8e4bf930659c724",
+    "src/prethink.tsx": "d78bfa0a8ecb48368df7329cb342416f271a96541acba99179f9c11c27c03129",
+    "tests/deepseek-http.test.mjs": "832e12ce807ae1eaedda74792159d2e5d45c699309e72b80509c81fed8563ae3",
+    "tests/prethink.spec.ts": "e8557ae41b51a60804c7e8ff6f3d41a66b559a9a1897c6031186ab917ebc9526",
+    "tests/prethink.test.mjs": "f7e495f98554be40ff8774f3e87d5ef3f79c8becb7a9d13b7e77393c78fe62a8",
+    "tsconfig.json": "3c4b1703a6ba34372f83af11e3e50228b28f3e3fe5617129748f8bc2781d101a",
+    "vite.prethink.config.mjs": "2f36262def1aecd92855e2a14cd0e249ffef32616b0cc642b601bc4b1ed798b6"
+  },
+  "manifestSelfExcluded": true
+}
