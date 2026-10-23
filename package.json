@@ -15,7 +15,10 @@
     "start:prethink": "npm start",
     "test": "node --test tests/*.test.mjs",
     "test:ui": "playwright test",
-    "check": "npm test && npm run build && npm run test:ui"
+    "check": "npm test && npm run build && npm run test:ui",
+    "install:probe": "npm ci --prefix probe --ignore-scripts --no-audit --no-fund",
+    "start:probe": "node probe/server.mjs",
+    "test:probe": "npm test --prefix probe && playwright test --config probe/playwright.config.mjs"
   },
   "dependencies": {
     "react": "18.3.1",

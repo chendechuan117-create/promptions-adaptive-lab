@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ThoughtScout 接入演示</title>
+  <style>
+    :root { color-scheme: light dark; font-family: var(--font-sans, system-ui, sans-serif); color: var(--color-text-primary, #1b2927); background: var(--color-background-primary, #f9fbfa); }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 720px; margin: auto; padding: 24px; padding-top: max(24px, env(safe-area-inset-top)); padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+    .badge { display: inline-block; font-size: 12px; color: #236456; background: #e5f2ed; padding: 6px 10px; border-radius: 20px; }
+    h1 { font-size: 23px; line-height: 1.45; margin: 18px 0 8px; }
+    h2 { font-size: 17px; margin: 22px 0 10px; }
+    p { font-size: 14px; line-height: 1.65; margin: 8px 0; }
+    .muted { color: var(--color-text-secondary, #546760); }
+    #cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    button, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; min-height: 44px; border: 1px solid #adc6bc; border-radius: 12px; background: var(--color-background-primary, #fff); padding: 11px 14px; }
+    button:hover:not(:disabled) { border-color: #286f59; background: #edf6f1; color: #183c2d; }
+    button:focus-visible, textarea:focus-visible { outline: 3px solid #32936f; outline-offset: 3px; }
+    button:disabled { cursor: default; opacity: .55; }
+    .card { text-align: left; min-height: 100px; overflow-wrap: anywhere; }
+    .card[aria-pressed="true"] { border: 2px solid #287553; background: #e7f3ed; color: #183c2d; }
+    .card strong, .card span { display: block; }
+    .card strong { font-size: 16px; margin-bottom: 6px; }
+    .card span { font-size: 13px; line-height: 1.5; }
+    #back { margin-bottom: 12px; }
+    #selected { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
+    #selected button { min-height: 36px; padding: 6px 10px; font-size: 12px; border-radius: 20px; overflow-wrap: anywhere; }
+    label { display: block; font-size: 14px; margin: 14px 0 7px; }
+    textarea { display: block; width: 100%; min-height: 86px; padding: 12px; border: 1px solid #adc6bc; border-radius: 10px; resize: vertical; background: var(--color-background-primary, #fff); }
+    #send { width: 100%; margin-top: 16px; background: #195f47; color: #fff; border-color: #195f47; font-weight: 600; }
+    #status { min-height: 24px; overflow-wrap: anywhere; }
+    #retry { margin-top: 8px; }
+    [hidden] { display: none !important; }
+    @media (max-width: 430px) { main { padding: 16px; } h1 { font-size: 21px; } #cards { grid-template-columns: 1fr; } .card { min-height: 84px; } }
+    @media (prefers-color-scheme: dark) { :root { color: var(--color-text-primary, #e3eee9); background: var(--color-background-primary, #17231e); } .muted { color: var(--color-text-secondary, #b3c4bb); } button, textarea { background: var(--color-background-primary, #1e3028); } }
+  </style>
+</head>
+<body>
+<main>
+  <span class="badge">接入演示 · 固定示例，不调用 DeepSeek</span>
+  <h1 id="goal">挑选住宿，兼顾通勤与日常生活</h1>
+  <p class="muted">先选一个在意的方向，点击后展开。以下是待核实的考虑方向，不是已确认事实，也不代表 AI 回答质量。</p>
+  <h2 id="view-title">你想先看哪个方向？</h2>
+  <button id="back" type="button" hidden>返回四个方向（保留已选）</button>
+  <div id="cards" aria-labelledby="view-title"></div>
+  <h2>带入回答的考虑方向</h2>
+  <p id="empty" class="muted">尚未选择；可以直接补充你的想法。</p>
+  <div id="selected" aria-label="已选方向"></div>
+  <label for="note">补充想法（可选，最多 400 字）</label>
+  <textarea id="note" maxlength="400" placeholder="例如：晚上需要安静，愿意接受稍长的通勤。"></textarea>
+  <button id="send" type="button" disabled>交给 ChatGPT 回答</button>
+  <p id="status" role="status" aria-live="polite">正在连接宿主…</p>
+  <button id="retry" type="button" hidden>重新连接</button>
+</main>
+<script>
+(() => {
+  'use strict';
+  const el = id => document.getElementById(id);
+  const rootIds = ['commute', 'rest', 'daily', 'cost'];
+  const children = {
+    commute: ['commute-time', 'commute-route', 'commute-backup'],
+    rest: ['rest-noise', 'rest-light', 'rest-routine'],
+    daily: ['daily-food', 'daily-errands', 'daily-space'],
+    cost: ['cost-total', 'cost-flexibility', 'cost-tradeoff']
+  };
+  const selected = new Map();
+  const pending = new Map();
+  let nextId = 0, initialized = false, busy = true, view = null, roots = null;
+  let retryAction = null, sent = false, uncertain = false, initialTimer, waitingInitial = false;
+  let hostOrigin = '*';
+  let hostCapabilities = {};
+
+  function status(text) { el('status').textContent = text; }
+  function notify(method, params = {}) { window.parent.postMessage({ jsonrpc: '2.0', method, params }, hostOrigin); }
+  function rpc(method, params) {
+    return new Promise((resolve, reject) => {
+      const id = ++nextId;
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        const error = new Error('宿主响应超时'); error.timedOut = true; reject(error);
+      }, 12000);
+      pending.set(id, { resolve, reject, timer });
+      window.parent.postMessage({ jsonrpc: '2.0', id, method, params }, hostOrigin);
+    });
+  }
+  function errorText(error) { return String(error?.message || '请求失败').slice(0, 200); }
+  function showRetry(label, action) { retryAction = action; el('retry').textContent = label; el('retry').hidden = false; }
+  function controls() {
+    el('send').disabled = busy || !initialized || !view || sent || uncertain;
+    el('note').disabled = busy || sent || uncertain;
+    el('back').disabled = busy || sent || uncertain;
+    for (const b of document.querySelectorAll('#cards button, #selected button')) b.disabled = busy || sent || uncertain;
+  }
+  function renderSelections() {
+    el('selected').replaceChildren();
+    el('empty').hidden = selected.size > 0;
+    for (const [id, label] of selected) {
+      const b = document.createElement('button'); b.type = 'button';
+      b.textContent = label + ' ×'; b.setAttribute('aria-label', '移除 ' + label);
+      b.onclick = () => { selected.delete(id); render(); status('已移除该方向。'); };
+      el('selected').append(b);
+    }
+  }
+  function render() {
+    renderSelections();
+    el('cards').replaceChildren();
+    if (view) {
+      el('goal').textContent = view.goal;
+      el('view-title').textContent = view.view === 'root' ? '你想先看哪个方向？' : '继续挑选想带入回答的角度';
+      el('back').hidden = view.view === 'root';
+      for (const option of view.options) {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'card';
+        b.setAttribute('aria-pressed', String(selected.has(option.id)));
+        const label = document.createElement('strong'); label.textContent = option.label;
+        const hint = document.createElement('span'); hint.textContent = option.hint;
+        b.append(label, hint);
+        b.onclick = () => choose(option);
+        el('cards').append(b);
+      }
+    }
+    controls();
+  }
+  function decode(result) {
+    if (!result || result.isError) throw new Error('工具返回失败，请重试。');
+    const data = result.structuredContent;
+    if (!data || data.fixture !== true) throw new Error('未收到固定演示数据。');
+    return data;
+  }
+  function acceptView(result) {
+    const data = decode(result);
+    if (!['root', 'expanded'].includes(data.view) || typeof data.goal !== 'string' || !Array.isArray(data.options)) throw new Error('示例数据格式不正确。');
+    const ids = data.view === 'root' ? rootIds : children[data.focus];
+    if (!ids || data.options.length !== ids.length || new Set(data.options.map(o => o.id)).size !== ids.length || data.options.some(o => !ids.includes(o.id) || typeof o.label !== 'string' || typeof o.hint !== 'string')) throw new Error('示例方向格式不正确。');
+    view = data;
+    if (data.view === 'root') roots = data;
+    clearTimeout(initialTimer);
+    el('retry').hidden = true;
+    render();
+  }
+  async function callTool(name, args) { return decode(await rpc('tools/call', { name, arguments: args })); }
+  async function loadRoot() {
+    waitingInitial = false; clearTimeout(initialTimer);
+    busy = true; el('retry').hidden = true; controls(); status('正在加载固定示例…');
+    try { const data = await callTool('start_prethink_probe', {}); acceptView({ structuredContent: data }); status('选择一个方向即可展开。'); }
+    catch (error) { status(errorText(error)); showRetry('重新加载示例', loadRoot); }
+    finally { busy = false; controls(); }
+  }
+  async function choose(option) {
+    if (busy || sent || uncertain) return;
+    if (view.view === 'expanded') {
+      if (selected.has(option.id)) selected.delete(option.id);
+      else if (selected.size < 12) selected.set(option.id, option.label);
+      else { status('最多保留 12 个方向，请先移除一个。'); return; }
+      render(); status('已更新选择；此前选择仍保留。'); return;
+    }
+    if (!selected.has(option.id) && selected.size >= 12) { status('最多保留 12 个方向，请先移除一个。'); return; }
+    selected.set(option.id, option.label);
+    busy = true; render(); status('正在展开「' + option.label + '」…');
+    try {
+      const data = await callTool('expand_prethink_probe', { focus: option.id });
+      acceptView({ structuredContent: data });
+      status('点击角度可选择或取消；返回后仍保留此前选择。');
+    } catch (error) { status(errorText(error) + ' 已保留选择，可再次点击方向重试。'); }
+    finally { busy = false; controls(); }
+  }
+  async function handoff() {
+    if (busy || sent || uncertain || !view) return;
+    busy = true; el('retry').hidden = true; controls();
+    const ids = [...selected.keys()], note = el('note').value.slice(0, 400);
+    let sending = false;
+    try {
+      status('正在整理选择与当前补充…');
+      const data = await callTool('prepare_probe_handoff', { selected_ids: ids, note });
+      if (typeof data.summary !== 'string' || typeof data.goal !== 'string' || !Array.isArray(data.selected)) throw new Error('交接数据格式不正确。');
+      // A hypothesis list and user note are context, never evidence of actual accommodation conditions.
+      const text = data.summary + '\n用户当前补充：' + (note || '无') + '\n以上仅为用户选择的待核实考虑方向，不是已确认事实。';
+      status('正在向 ChatGPT 更新上下文…');
+      const context = { content: [{ type: 'text', text }] };
+      if (hostCapabilities.updateModelContext.structuredContent) context.structuredContent = { fixture: true, goal: data.goal, selected: data.selected, selected_ids: ids, note, summary: data.summary };
+      await rpc('ui/update-model-context', context);
+      status('正在交给 ChatGPT…'); sending = true;
+      const result = await rpc('ui/message', { role: 'user', content: [{ type: 'text', text: '请根据这次预思考交接回答原任务「' + data.goal + '」，结合我刚选择的方向与补充：\n' + text }] });
+      if (result?.isError) throw new Error('宿主未接受消息，请检查聊天后重试。');
+      sent = true; el('send').textContent = '已交给 ChatGPT'; status('宿主已接受消息，请在聊天中查看回答。');
+    } catch (error) {
+      if (sending && error.timedOut) { uncertain = true; status('发送结果未确认，请查看聊天，避免重复发送。'); }
+      else status((sending ? '发送失败：' : '尚未发送：') + errorText(error) + ' 可再次点击交接按钮重试。');
+    } finally { busy = false; controls(); }
+  }
+  function applyContext(context) {
+    if (context?.theme === 'dark' || context?.theme === 'light') document.documentElement.style.colorScheme = context.theme;
+    const insets = context?.safeAreaInsets;
+    if (insets) for (const edge of ['top', 'right', 'bottom', 'left']) {
+      if (Number.isFinite(insets[edge]) && insets[edge] >= 0) document.querySelector('main').style.setProperty('padding-' + edge, Math.max(16, Math.min(insets[edge], 100)) + 'px');
+    }
+  }
+  window.addEventListener('message', event => {
+    if (event.source !== window.parent || !event.data || event.data.jsonrpc !== '2.0') return;
+    if (hostOrigin !== '*' && event.origin !== hostOrigin) return;
+    const message = event.data;
+    if (pending.has(message.id) && !message.method) {
+      const p = pending.get(message.id); pending.delete(message.id); clearTimeout(p.timer);
+      if (event.origin !== 'null') hostOrigin = event.origin;
+      if (message.error) p.reject(new Error(message.error.message || '宿主拒绝请求'));
+      else if ('result' in message) {
+        if (message.result?.isError) p.reject(new Error('宿主未接受请求。'));
+        else p.resolve(message.result);
+      } else p.reject(new Error('宿主响应格式不正确。'));
+      return;
+    }
+    if (message.method === 'ui/notifications/tool-result' && initialized) {
+      const data = message.params?.structuredContent;
+      // Click-initiated calls are handled by their correlated responses, so late notifications cannot overwrite newer views.
+      if (waitingInitial && !view && data?.view === 'root') {
+        waitingInitial = false;
+        try { acceptView(message.params); busy = false; controls(); status('选择一个方向即可展开。'); }
+        catch (error) { status(errorText(error)); busy = false; showRetry('重新加载示例', loadRoot); controls(); }
+      }
+    } else if (message.method === 'ui/notifications/host-context-changed') applyContext(message.params);
+    else if (message.method === 'ping' && message.id != null) window.parent.postMessage({ jsonrpc: '2.0', id: message.id, result: {} }, hostOrigin);
+    else if (message.method === 'ui/resource-teardown' && message.id != null) {
+      for (const p of pending.values()) { clearTimeout(p.timer); p.reject(new Error('视图已关闭。')); }
+      pending.clear(); clearTimeout(initialTimer);
+      window.parent.postMessage({ jsonrpc: '2.0', id: message.id, result: {} }, hostOrigin);
+    }
+  });
+  async function connect() {
+    busy = true; initialized = false; waitingInitial = false; el('retry').hidden = true; controls(); status('正在连接宿主…'); clearTimeout(initialTimer);
+    try {
+      if (window.parent === window) throw new Error('请在支持 MCP Apps 的宿主中打开此演示。');
+      const result = await rpc('ui/initialize', { appInfo: { name: 'ThoughtScout probe', version: '0.1.0' }, appCapabilities: { availableDisplayModes: ['inline'] }, protocolVersion: '2026-01-26' });
+      if (result.protocolVersion !== '2026-01-26' || !result.hostCapabilities?.serverTools) throw new Error('宿主尚未支持本演示需要的 MCP Apps 工具桥接。');
+      if (!result.hostCapabilities.message?.text || !result.hostCapabilities.updateModelContext?.text) throw new Error('宿主未声明文本消息与文本上下文交接能力，请更新宿主后重试。');
+      hostCapabilities = result.hostCapabilities;
+      applyContext(result.hostContext);
+      initialized = true; waitingInitial = !view; notify('ui/notifications/initialized');
+      if (view) { busy = false; render(); status('已重新连接。'); }
+      else {
+        status('已连接，等待初始工具结果…');
+        initialTimer = setTimeout(() => { waitingInitial = false; busy = false; controls(); status('未收到初始示例，可重新加载。'); showRetry('重新加载示例', loadRoot); }, 12000);
+      }
+    } catch (error) { busy = false; controls(); status(errorText(error)); showRetry('重新连接', connect); }
+  }
+  el('back').onclick = () => { if (roots && !busy) { view = roots; render(); status('此前选择已保留。'); } };
+  el('send').onclick = handoff;
+  el('retry').onclick = () => retryAction?.();
+  new ResizeObserver(() => { if (initialized) notify('ui/notifications/size-changed', { height: document.documentElement.scrollHeight }); }).observe(document.querySelector('main'));
+  connect();
+})();
+</script>
+</body>
+</html>

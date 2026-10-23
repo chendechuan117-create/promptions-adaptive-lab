@@ -55,9 +55,9 @@ npm run test:ui
 
 ## ChatGPT 插件方向
 
-建议用 MCP 服务与 MCP Apps 卡片承载“主动开启预思考 → 卡片内延伸 → 交还 ChatGPT 回答”。这是**接入提案，尚未实现或注册为插件**。公开代码目前是一套独立网页应用。
+建议用 MCP 服务与 MCP Apps 卡片承载“主动开启预思考 → 卡片内延伸 → 交还 ChatGPT 回答”。另有独立的**固定数据接入探针**，用于测试宿主卡片、点击更新与最终交接。探针不调用 DeepSeek，不等于完整 AI 插件；手机 ChatGPT 实际可用性仍需接入验收。
 
-完整路线、官方文档和待验证边界见 [ChatGPT 插件接入提案](docs/chatgpt-plugin-plan.md)。
+运行探针与验证边界见 [接入探针说明](probe/README.md)；完整路线和官方文档见 [ChatGPT 插件接入提案](docs/chatgpt-plugin-plan.md)。
 
 ## 代码结构
 
