@@ -21,7 +21,9 @@
     "start:probe": "node probe/server.mjs",
     "test:probe": "npm test --prefix probe && playwright test --config probe/playwright.config.mjs",
     "start:chatgpt": "node --env-file-if-exists=.env --use-env-proxy probe/live-server.mjs",
-    "test:chatgpt": "npm run build:widget && npm test --prefix probe && playwright test --config probe/live-playwright.config.mjs"
+    "test:chatgpt": "npm run build:widget && npm test --prefix probe && playwright test --config probe/live-playwright.config.mjs",
+    "install:inspector": "npm ci --prefix tools/inspector --ignore-scripts --no-audit --no-fund",
+    "test:inspector": "node probe/inspect-contract.mjs && node probe/inspect-widget.mjs"
   },
   "dependencies": {
     "react": "18.3.1",

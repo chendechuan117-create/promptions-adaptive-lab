@@ -1,0 +1,471 @@
+{
+  "format": 1,
+  "resources": [
+    {
+      "_meta": {
+        "ui": {
+          "csp": {
+            "baseUriDomains": [],
+            "connectDomains": [],
+            "frameDomains": [],
+            "resourceDomains": []
+          },
+          "prefersBorder": true
+        }
+      },
+      "description": "自主输入目标、连续联想与用户主动交接。",
+      "mimeType": "text/html;profile=mcp-app",
+      "name": "thoughtscout-prethinking",
+      "uri": "ui://thoughtscout/prethinking-v1.html"
+    },
+    {
+      "_meta": {
+        "ui": {
+          "csp": {
+            "baseUriDomains": [],
+            "connectDomains": [],
+            "frameDomains": [],
+            "resourceDomains": []
+          },
+          "prefersBorder": true
+        }
+      },
+      "description": "自主输入目标、连续联想与用户主动交接。",
+      "mimeType": "text/html;profile=mcp-app",
+      "name": "thoughtscout-prethinking-legacy-uri",
+      "uri": "ui://thoughtscout/probe.html"
+    }
+  ],
+  "tools": [
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "noauth"
+          }
+        ],
+        "ui": {
+          "visibility": [
+            "app"
+          ]
+        }
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "仅取消匹配随机客户端标识、请求标识和版本的当前请求。已经开始的模型调用不退回预算。",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "clientId": {
+            "pattern": "^(?:[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}|[a-zA-Z0-9_-]{32,100})$",
+            "type": "string"
+          },
+          "requestId": {
+            "pattern": "^[a-zA-Z0-9_-]{1,100}$",
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "clientId",
+          "requestId",
+          "version"
+        ],
+        "type": "object"
+      },
+      "name": "cancel_prethink",
+      "title": "取消当前联想请求"
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "noauth"
+          }
+        ],
+        "ui": {
+          "visibility": [
+            "app"
+          ]
+        }
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "仅卡片主动调用：提交本轮选择和备注，由服务端衔接当前任务生成联想，DeepSeek Flash reasoning none；不生成正式答案。消耗有限试验预算，失败不返还；不自动重试。",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "clientId": {
+            "pattern": "^(?:[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}|[a-zA-Z0-9_-]{32,100})$",
+            "type": "string"
+          },
+          "goal": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "mode": {
+            "const": "cues",
+            "type": "string"
+          },
+          "note": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "parentRequestId": {
+            "anyOf": [
+              {
+                "pattern": "^[a-zA-Z0-9_-]{1,100}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requestId": {
+            "pattern": "^[a-zA-Z0-9_-]{1,100}$",
+            "type": "string"
+          },
+          "selected": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "hint": {
+                  "maxLength": 240,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "label": {
+                  "maxLength": 80,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label",
+                "hint"
+              ],
+              "type": "object"
+            },
+            "maxItems": 24,
+            "type": "array"
+          },
+          "variant": {
+            "enum": [
+              "baseline",
+              "scoped"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "clientId",
+          "goal",
+          "parentRequestId",
+          "selected",
+          "note",
+          "requestId",
+          "version",
+          "mode",
+          "variant"
+        ],
+        "type": "object"
+      },
+      "name": "generate_prethink_cues",
+      "title": "生成下一轮联想方向"
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "noauth"
+          }
+        ],
+        "ui": {
+          "visibility": [
+            "app"
+          ]
+        }
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "按原顺序整理原目标、历轮待考虑方向和用户补充，方向不是事实。不调用模型；由卡片更新上下文并主动交给ChatGPT回答。",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "clientId": {
+            "pattern": "^(?:[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}|[a-zA-Z0-9_-]{32,100})$",
+            "type": "string"
+          },
+          "goal": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "note": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "parentRequestId": {
+            "anyOf": [
+              {
+                "pattern": "^[a-zA-Z0-9_-]{1,100}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selected": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "hint": {
+                  "maxLength": 240,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "label": {
+                  "maxLength": 80,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label",
+                "hint"
+              ],
+              "type": "object"
+            },
+            "maxItems": 24,
+            "type": "array"
+          }
+        },
+        "required": [
+          "clientId",
+          "goal",
+          "parentRequestId",
+          "selected",
+          "note"
+        ],
+        "type": "object"
+      },
+      "name": "prepare_prethink_handoff",
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "goal": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "rounds": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "note": {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                "selected": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "hint": {
+                        "maxLength": 240,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "label": {
+                        "maxLength": 80,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "label",
+                      "hint"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 24,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "selected",
+                "note"
+              ],
+              "type": "object"
+            },
+            "maxItems": 24,
+            "type": "array"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "goal",
+          "rounds",
+          "summary"
+        ],
+        "type": "object"
+      },
+      "title": "整理预思考交接"
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "noauth"
+          }
+        ],
+        "ui": {
+          "resourceUri": "ui://thoughtscout/prethinking-v1.html",
+          "visibility": [
+            "model",
+            "app"
+          ]
+        },
+        "ui/resourceUri": "ui://thoughtscout/prethinking-v1.html"
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "打开预思考卡片，可传入用户原目标。仅打开界面，不调用模型。等待用户在卡片内输入、点击联想或交接，不自动遍历方向或提前给出完整答案。联想生成使用DeepSeek并受试验预算限制；最终回答由ChatGPT完成。",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "start_prethink_probe",
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "goal": {
+            "type": "string"
+          },
+          "mode": {
+            "const": "start",
+            "type": "string"
+          },
+          "model": {
+            "const": "deepseek-flash",
+            "type": "string"
+          },
+          "provider": {
+            "const": "deepseek",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "goal",
+          "provider",
+          "model"
+        ],
+        "type": "object"
+      },
+      "title": "开启预思考（兼容入口）"
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "type": "noauth"
+          }
+        ],
+        "ui": {
+          "resourceUri": "ui://thoughtscout/prethinking-v1.html",
+          "visibility": [
+            "model",
+            "app"
+          ]
+        },
+        "ui/resourceUri": "ui://thoughtscout/prethinking-v1.html"
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "打开预思考卡片，可传入用户原目标。仅打开界面，不调用模型。等待用户在卡片内输入、点击联想或交接，不自动遍历方向或提前给出完整答案。联想生成使用DeepSeek并受试验预算限制；最终回答由ChatGPT完成。",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "goal": {
+            "default": "",
+            "maxLength": 4000,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "start_prethinking",
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "goal": {
+            "type": "string"
+          },
+          "mode": {
+            "const": "start",
+            "type": "string"
+          },
+          "model": {
+            "const": "deepseek-flash",
+            "type": "string"
+          },
+          "provider": {
+            "const": "deepseek",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "goal",
+          "provider",
+          "model"
+        ],
+        "type": "object"
+      },
+      "title": "开启预思考"
+    }
+  ]
+}

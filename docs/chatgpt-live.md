@@ -50,3 +50,27 @@ npm run test:chatgpt
 ## 验收范围
 
 自动检查覆盖两类非住宿目标连续三轮、自由补充和多选、375px双列、取消与迟到响应、父请求确认、费用边界、交接顺序和未知发送保护。模拟宿主通过不证明 ChatGPT 原生手机行为；真实 DeepSeek 返回也不证明真人联想或效率收益。手机验收还应检查实际点击等待、卡片是否保持，以及最后正文是否使用了补充。
+
+### 独立 Inspector 发布检查
+
+固定使用官方 `@modelcontextprotocol/inspector@2.12.0`，开发依赖单独放在 `tools/inspector`，不进入产品卡片。安装原项目与 probe 依赖、构建卡片并安装 Playwright Chromium 后运行：
+
+```sh
+npm run install:inspector
+npm run build:widget
+npm run test:inspector
+```
+
+第一项检查用官方 CLI 连接临时的真实 MCP 服务：核对五个工具的 schema、元数据及两个卡片地址，读取资源并检查 MIME/CSP，执行两个空目标的免费入口。检查既看进程结果，也拒绝 `resourceError`，不会因为 HTTP 200 或 CLI 正常退出就接受缺失资源。`probe/contracts/live-v1.json` 是当前接口的审阅基线；变化需要人工核对升级影响后显式修改，脚本不会自动覆盖。它记录的是动态版当前契约，不表示旧固定探针的返回 schema 仍然兼容。
+
+第二项检查启动官方 Web Inspector 和独立沙箱，等待初始化后再检查 iframe 内的真实问题输入框及禁用的生成按钮，捕获脚本/CSP 错误。服务预算为零，目标为空，检查期间不允许任何生成尝试。Inspector 的配置和认证状态使用临时目录，不使用个人默认配置。两项检查均不调用付费模型，已加入 CI。
+
+已部署端点可以只跑免费协议检查：
+
+```sh
+node probe/inspect-contract.mjs --url https://your-host.example/mcp
+```
+
+不要在有其他用户生成时把预算变化直接归因于检查脚本；门禁会停止并要求核对。可用 `node probe/inspect-widget.mjs --artifacts /your/private/output` 保存官方宿主的报告与截图，工件应放在公开仓库外。
+
+这层检查证明独立官方客户端能发现资源并初始化实际界面，不覆盖真实 ChatGPT 的账号权限、缓存刷新、网络验证、手机显示或最终回答采纳。发布后仍需在实际宿主验收；暂无必要增加另一个生产网关。

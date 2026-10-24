@@ -1,0 +1,10 @@
+{
+  "name": "thoughtscout-inspector-checks",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pinned independent MCP client for development and release checks only.",
+  "engines": { "node": ">=22.19.0" },
+  "dependencies": {
+    "@modelcontextprotocol/inspector": "2.12.0"
+  }
+}

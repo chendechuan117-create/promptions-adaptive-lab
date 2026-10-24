@@ -24,3 +24,5 @@ jobs:
       - run: npm run test:probe
       - run: npm run build:widget
       - run: npx playwright test --config probe/live-playwright.config.mjs
+      - run: npm run install:inspector
+      - run: npm run test:inspector
