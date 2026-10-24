@@ -51,7 +51,7 @@ function installFakeHost() {
     const message = event.data;
     state.messages.push(message);
     const reply = result => send({ id: message.id, result });
-    const reject = text => send({ id: message.id, error: { code: -32000, message: text } });
+    const reject = (text, code = -32000) => send({ id: message.id, error: { code, message: text } });
     if (message.method === 'ui/initialize') reply({
       protocolVersion: '2026-01-26', hostInfo: { name: 'local-live-ui-fixture', version: '1.0.0' },
       hostCapabilities: { serverTools: {}, message: { text: {} }, updateModelContext: { text: {}, structuredContent: {} } },
@@ -65,7 +65,11 @@ function installFakeHost() {
         try { restoreRounds(args); } catch (error) { reject(error.message); return; }
         const count = ++state.count;
         if (count === 1 && params.has('holdFirst')) { state.pendingFirst = { id: message.id, args }; return; }
+        if ((count === 1 && params.has('rejectFirst')) || (count === 2 && params.has('rejectSecond'))) {
+          reject('Synthetic host tool rejection; no model was called.', -32601); return;
+        }
         const result = cueResult(args);
+        if (count === 1 && params.has('emptyFirst')) result.options = [];
         // Identity is valid but a child option violates the UI shape contract.
         if (count === 2 && params.has('malformedChild')) result.options = [{ label: 42, hint: 'Invalid fixture option' }];
         reply({ structuredContent: result });

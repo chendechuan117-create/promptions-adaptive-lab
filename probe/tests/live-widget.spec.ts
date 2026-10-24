@@ -52,6 +52,102 @@ test('blank initial goal waits for user input and never inserts the fixed accomm
   await expect(frame.getByText('挑选住宿，兼顾通勤与日常生活')).toHaveCount(0);
 });
 
+test('first-round host rejection is an actionable error, not a successful empty result; retry includes new notes', async ({ page }) => {
+  const goal = '一加12 LineageOS 自定义手势';
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/?' + new URLSearchParams({ goal, rejectFirst: '1' }));
+  const frame = widget(page);
+  const alert = frame.getByRole('alert');
+  await expect(alert).toHaveCount(1);
+  await expect(alert).toContainText('第一轮联想未生成');
+  await expect(alert).toContainText('生成联想');
+  await expect(alert).toContainText('-32601');
+  await expect(frame.locator('.journey-goal .value')).toHaveText(goal);
+  await expect(frame.getByTestId('cue-option')).toHaveCount(0);
+  await expect(frame.getByText(/暂时没有新的方向/)).toHaveCount(0);
+  await expect(frame.getByRole('button', { name: '开启多选' })).toHaveCount(0);
+  await expect(frame.getByText('单选会立即继续')).toHaveCount(0);
+  await expect(frame.getByRole('button', { name: '重试', exact: true })).toBeEnabled();
+  await expect(frame.getByRole('button', { name: '交给 ChatGPT 回答' })).toBeEnabled();
+  await expect(frame.getByLabel('当前补充')).toBeEnabled();
+  await expect(frame.locator('.status-region')).toBeEmpty();
+  const alertBox = await alert.boundingBox(), noteBox = await frame.getByLabel('当前补充').boundingBox();
+  expect(alertBox!.y + alertBox!.height).toBeLessThan(noteBox!.y);
+  const note = '只想设置熄屏画V手势';
+  await frame.getByLabel('当前补充').fill(note);
+  await frame.getByRole('button', { name: '带着修改重试', exact: true }).click();
+  await expect(frame.getByTestId('cue-option')).toHaveCount(4);
+  await expect(alert).toHaveCount(0);
+  const generated = await generations(page);
+  expect(generated).toHaveLength(2);
+  expect(generated[1].args).toMatchObject({ goal, parentRequestId: null, selected: [], note });
+  expect(generated[1].args.requestId).not.toBe(generated[0].args.requestId);
+  await frame.locator('.history summary').click();
+  await expect(frame.locator('.history')).toContainText(note);
+  await expect(frame.getByLabel('当前补充')).toHaveValue('');
+});
+
+test('first-round loading and cancellation remain distinct from successful emptiness and can resume', async ({ page }) => {
+  await page.goto('/?' + new URLSearchParams({ goal: '安排邻里旧书交换', holdFirst: '1' }));
+  const frame = widget(page);
+  await expect(frame.getByTestId('cue-empty-state')).toContainText('正在想几个方向');
+  await expect(frame.getByText(/暂时没有新的方向/)).toHaveCount(0);
+  await frame.getByRole('button', { name: '取消生成' }).click();
+  await expect(frame.getByTestId('cue-empty-state')).toContainText('本轮联想已取消');
+  await expect(frame.getByRole('alert')).toHaveCount(0);
+  await expect(frame.getByText(/暂时没有新的方向/)).toHaveCount(0);
+  await frame.getByLabel('当前补充').fill('要安排儿童介绍自己的书');
+  await frame.getByRole('button', { name: '重新生成联想', exact: true }).click();
+  await expect(frame.getByTestId('cue-option')).toHaveCount(4);
+  const generated = await generations(page);
+  expect(generated[1].args).toMatchObject({ parentRequestId: null, selected: [], note: '要安排儿童介绍自己的书' });
+});
+
+test('a valid empty success can still take a note and continue from its accepted parent', async ({ page }) => {
+  await page.goto('/?' + new URLSearchParams({ goal: '设计一段手机动画', emptyFirst: '1' }));
+  const frame = widget(page);
+  await expect(frame.getByTestId('cue-empty-state')).toContainText('暂时没有新的方向');
+  await expect(frame.getByRole('alert')).toHaveCount(0);
+  await expect(frame.getByRole('button', { name: '开启多选' })).toHaveCount(0);
+  await frame.getByLabel('当前补充').fill('每晚只有半小时');
+  await frame.getByRole('button', { name: '沿所选方向继续' }).click();
+  await expect(frame.getByTestId('cue-option')).toHaveCount(4);
+  const generated = await generations(page);
+  expect(generated[1].args).toMatchObject({ parentRequestId: generated[0].args.requestId, selected: [], note: '每晚只有半小时' });
+});
+
+test('a rejected next round preserves directions and draft; edited retry keeps the accepted parent', async ({ page }) => {
+  await open(page, '安排邻里旧书交换', { rejectSecond: '1' });
+  const frame = widget(page);
+  const beforeLabels = await frame.getByTestId('cue-option').allTextContents();
+  await frame.getByRole('button', { name: '开启多选' }).click();
+  await frame.getByTestId('cue-option').nth(0).click();
+  await frame.getByTestId('cue-option').nth(1).click();
+  await frame.getByLabel('当前补充').fill('很多小朋友想互相介绍书');
+  await frame.getByRole('button', { name: '沿所选方向继续' }).click();
+  await expect(frame.getByRole('alert')).toContainText('-32601');
+  await expect(frame.getByRole('alert')).toHaveCount(1);
+  expect(await frame.getByTestId('cue-option').allTextContents()).toEqual(beforeLabels);
+  await expect(frame.getByTestId('cue-option').nth(0)).toHaveAttribute('aria-pressed', 'true');
+  await expect(frame.getByTestId('cue-option').nth(1)).toHaveAttribute('aria-pressed', 'true');
+  await expect(frame.getByLabel('当前补充')).toHaveValue('很多小朋友想互相介绍书');
+  await expect(frame.getByRole('button', { name: '重试', exact: true })).toBeEnabled();
+  await frame.getByTestId('cue-option').nth(2).click();
+  const updatedNote = '很多小朋友想互相介绍书，部分住户只能晚上来';
+  await frame.getByLabel('当前补充').fill(updatedNote);
+  await frame.getByRole('button', { name: '带着修改重试', exact: true }).click();
+  await expect(frame.getByRole('button', { name: '雨天备选·第2轮', exact: true })).toBeEnabled();
+  const generated = await generations(page);
+  expect(generated).toHaveLength(3);
+  expect(generated[2].args.parentRequestId).toBe(generated[0].args.requestId);
+  expect(generated[2].args.parentRequestId).not.toBe(generated[1].args.requestId);
+  expect(generated[2].args.selected.map(option => option.label)).toEqual(['参与人群', '交换规则', '场地动线']);
+  expect(generated[2].args.note).toBe(updatedNote);
+  await frame.locator('.history summary').click();
+  await expect(frame.locator('.history')).toContainText(updatedNote);
+  await expect(frame.locator('.history summary')).toContainText('1 步');
+});
+
 test('multiselect and notes affect the next request, history and awaited handoff', async ({ page }) => {
   const goal = '为社区图书角组织一次旧书交换';
   await open(page, goal, { holdContext: '1' });
@@ -149,7 +245,8 @@ test('context rejection preserves current note and prevents any ui/message', asy
   const frame = widget(page);
   await frame.getByLabel('当前补充').fill('本周右肩不适，先咨询专业人士');
   await frame.getByRole('button', { name: '交给 ChatGPT 回答' }).click();
-  await expect(frame.getByRole('alert')).toContainText('未接受这次请求');
+  await expect(frame.getByRole('alert')).toContainText('更新交接上下文');
+  await expect(frame.getByRole('alert')).toContainText('错误码 -32000');
   await expect(frame.locator('.status-region')).toContainText('尚未完成交接');
   expect((await messages(page)).filter(message => message.method === 'ui/message')).toHaveLength(0);
   await expect(frame.getByLabel('当前补充')).toHaveValue('本周右肩不适，先咨询专业人士');

@@ -65,6 +65,7 @@ export function App({ transport = httpTransport, embedded = false }: { transport
   const [healthFailed, setHealthFailed] = useState(false);
   const [firstCueRenderMs, setFirstCueRenderMs] = useState<number | null>(null);
   const [cueRenderReady, setCueRenderReady] = useState(false);
+  const [cueRequestState, setCueRequestState] = useState<'idle' | 'loading' | 'ready' | 'failed' | 'cancelled'>('idle');
   const [editingExisting, setEditingExisting] = useState(false);
   const [handoffState, setHandoffState] = useState<'idle' | 'sending' | 'sent' | 'uncertain' | 'failed'>('idle');
   const handoffController = useRef<AbortController | null>(null);
@@ -114,7 +115,10 @@ export function App({ transport = httpTransport, embedded = false }: { transport
     const active = activeRef.current;
     if (!active) return;
     activeRef.current = null;
-    if (active.mode === 'cues') firstCueStartedAt.current = null;
+    if (active.mode === 'cues') {
+      firstCueStartedAt.current = null;
+      setCueRequestState('cancelled');
+    }
     versionRef.current += 1;
     active.controller.abort();
     if (sendCancellation) {
@@ -132,7 +136,10 @@ export function App({ transport = httpTransport, embedded = false }: { transport
     const controller = new AbortController();
     const requestStart = performance.now();
     if (payload.mode === 'cues' && firstCueStartedAt.current === null) firstCueStartedAt.current = requestStart;
-    if (payload.mode === 'cues') setCueRenderReady(false);
+    if (payload.mode === 'cues') {
+      setCueRenderReady(false);
+      setCueRequestState('loading');
+    }
     activeRef.current = { controller, requestId, version, clientId, mode: payload.mode };
     setBusy(true);
     setErrorMessage('');
@@ -181,6 +188,7 @@ export function App({ transport = httpTransport, embedded = false }: { transport
         setAnswer(null);
         setPhase('cues');
         setCueRenderReady(true);
+        setCueRequestState('ready');
         setStatus(cues.length ? '可以点一个方向继续；点选只表示值得想一想。' : '这一层暂时没有新的方向，也可以直接整理成回答。');
       } else {
         setAnswer(answerValue);
@@ -193,7 +201,10 @@ export function App({ transport = httpTransport, embedded = false }: { transport
       if (versionRef.current !== version || activeRef.current?.version !== version) return;
       activeRef.current = null;
       setBusy(false);
-      if (payload.mode === 'cues') firstCueStartedAt.current = null;
+      if (payload.mode === 'cues') {
+        firstCueStartedAt.current = null;
+        setCueRequestState('failed');
+      }
       setErrorMessage(error instanceof Error ? error.message : '请求暂时没有完成');
       setRetryRecord({ payload, committedRounds });
       setStatus('刚才没接上，内容还在。');
@@ -219,6 +230,7 @@ export function App({ transport = httpTransport, embedded = false }: { transport
     setResults([]);
     setFirstCueRenderMs(null);
     setCueRenderReady(false);
+    setCueRequestState('idle');
     firstCueStartedAt.current = null;
     setEditingExisting(false);
     setPhase('cues');
@@ -264,7 +276,7 @@ export function App({ transport = httpTransport, embedded = false }: { transport
     } catch (error: unknown) {
       if (isObject(error) && error.uncertain === true) {
         setHandoffState('uncertain');
-        setStatus('发送结果尚未确认。请先查看聊天正文，当前内容已保留，避免重复发送。');
+        setStatus(error instanceof Error ? error.message : '发送结果尚未确认。请先查看聊天正文，当前内容已保留，避免重复发送。');
       } else {
         setHandoffState('failed');
         setErrorMessage(error instanceof Error ? error.message : '交接暂时没有完成');
@@ -324,6 +336,7 @@ export function App({ transport = httpTransport, embedded = false }: { transport
     setErrorMessage('');
     setFirstCueRenderMs(null);
     setCueRenderReady(false);
+    setCueRequestState('idle');
     firstCueStartedAt.current = null;
     setEditingExisting(false);
     setHandoffState('idle');
@@ -370,7 +383,10 @@ export function App({ transport = httpTransport, embedded = false }: { transport
       return;
     }
     if (!retryRecord) return;
-    void sendRequest(retryRecord.payload, retryRecord.committedRounds);
+    // Failed requests never commit rounds. Retry from that same accepted parent,
+    // including any draft edits the user has made since the failure.
+    const nextRounds = withDraft(rounds, currentDraft());
+    void sendRequest({ ...retryRecord.payload, rounds: nextRounds }, nextRounds);
   }
 
   const healthLabel = health
@@ -379,6 +395,10 @@ export function App({ transport = httpTransport, embedded = false }: { transport
   const canExport = results.length > 0 || rounds.length > 0;
   const draft = currentDraft();
   const hasDraft = draftHasContent(draft);
+  const hasCueResult = results.some((result) => result.mode === 'cues');
+  const inlineCueError = !options.length && Boolean(errorMessage && retryRecord?.payload.mode === 'cues');
+  const retryHasDraftChanges = retryRecord !== null && JSON.stringify(withDraft(rounds, draft)) !== JSON.stringify(retryRecord.committedRounds);
+  const retryLabel = retryHasDraftChanges ? '带着修改重试' : '重试';
   const answerActionLabel = !transport.handoff ? '直接生成答案'
     : handoffState === 'sent' ? '已交给 ChatGPT'
     : handoffState === 'sending' ? '正在交接…'
@@ -450,15 +470,15 @@ export function App({ transport = httpTransport, embedded = false }: { transport
 
             {phase === 'cues' ? (
               <>
-                <h2 className="section-heading">你可以从这些方向想想</h2>
-                <p className="section-copy" data-testid={variant === 'scoped' && scope ? 'cue-scope' : undefined}>{variant === 'scoped' && scope ? scope : transport.handoff ? '点一个方向继续，也可多选或交给 ChatGPT 回答。' : '点一个方向继续，也可多选或直接生成答案。'}</p>
+                <h2 className="section-heading">{hasCueResult ? '你可以从这些方向想想' : '先生成几个联想方向'}</h2>
+                {hasCueResult && <p className="section-copy" data-testid={variant === 'scoped' && scope ? 'cue-scope' : undefined}>{variant === 'scoped' && scope ? scope : transport.handoff ? '点一个方向继续，也可多选或交给 ChatGPT 回答。' : '点一个方向继续，也可多选或直接生成答案。'}</p>}
                 <div className="cue-controls">
-                  <div className="choice-tools">
+                  {options.length > 0 && <div className="choice-tools">
                     <button className="multi-toggle" type="button" aria-pressed={multiSelect} disabled={interactionDisabled} onClick={toggleMultiSelect}>
                       {multiSelect ? '退出多选' : '开启多选'}
                     </button>
                     <span className="choice-count">{multiSelect ? `已选 ${selectedIndexes.length} 项` : '单选会立即继续'}</span>
-                  </div>
+                  </div>}
                   <div className="next-actions">
                     {(multiSelect || note.trim().length > 0) && (
                       <button className="primary-button" type="button" aria-label="沿所选方向继续" disabled={interactionDisabled || !hasDraft} onClick={() => continueWithDraft()}>
@@ -495,8 +515,18 @@ export function App({ transport = httpTransport, embedded = false }: { transport
                       );
                     })}
                   </div>
+                ) : inlineCueError ? (
+                  <ErrorBox title={hasCueResult ? '这一步未生成，已有内容还在。' : '第一轮联想未生成，原问题已保留。'} message={errorMessage} onRetry={retry} busy={interactionDisabled} retryLabel={retryLabel} />
                 ) : (
-                  <div className="draft-summary">{busy ? '正在想几个方向…' : '暂时没有新的方向；你可以补充自己的想法，或直接整理成回答。'}</div>
+                  <div className="draft-summary" data-testid="cue-empty-state">
+                    {cueRequestState === 'loading' ? '正在想几个方向…'
+                      : cueRequestState === 'cancelled' ? '本轮联想已取消，原问题和补充都还在。'
+                      : hasCueResult ? '暂时没有新的方向；你可以补充自己的想法，或直接整理成回答。'
+                      : '还没有生成联想方向，可以继续生成，或先补充自己的想法。'}
+                    {!hasCueResult && cueRequestState !== 'loading' && <div className="error-actions">
+                      <button className="secondary-button" type="button" disabled={interactionDisabled} onClick={() => continueWithDraft()}>重新生成联想</button>
+                    </div>}
+                  </div>
                 )}
 
                 <div className="note-box">
@@ -515,7 +545,7 @@ export function App({ transport = httpTransport, embedded = false }: { transport
                 </div>
 
                 {selectedIndexes.length > 0 && <div className="draft-summary">已选方向：{selectedIndexes.map((index) => options[index]?.label).filter(Boolean).join('、')}</div>}
-                {errorMessage && <ErrorBox message={errorMessage} onRetry={retry} busy={interactionDisabled} />}
+                {errorMessage && !inlineCueError && <ErrorBox message={errorMessage} onRetry={retry} busy={interactionDisabled} retryLabel={retryLabel} />}
                 {(busy || handoffState === 'sending') && <LoadingRow label={status} />}
 
               </>
@@ -540,7 +570,7 @@ export function App({ transport = httpTransport, embedded = false }: { transport
 
             <HistoryDisclosure rounds={rounds} />
             <div className="status-region" role="status" aria-live="polite">
-              {status}{!embedded && firstCueRenderMs !== null && <span> · 首批线索出现 {firstCueRenderMs.toFixed(0)} ms（浏览器计时）</span>}
+              {!inlineCueError && status}{!embedded && firstCueRenderMs !== null && <span> · 首批线索出现 {firstCueRenderMs.toFixed(0)} ms（浏览器计时）</span>}
             </div>
           </>
         )}
@@ -557,13 +587,13 @@ export function App({ transport = httpTransport, embedded = false }: { transport
   );
 }
 
-function ErrorBox({ message, onRetry, busy }: { message: string; onRetry: () => void; busy: boolean }) {
+function ErrorBox({ message, onRetry, busy, title = '刚才没接上，内容还在。', retryLabel = '重试' }: { message: string; onRetry: () => void; busy: boolean; title?: string; retryLabel?: string }) {
   return (
     <div className="error-box" role="alert">
-      <strong>刚才没接上，内容还在。</strong>
+      <strong>{title}</strong>
       {message && <span className="error-detail">{message}</span>}
       <div className="error-actions">
-        <button className="secondary-button" type="button" disabled={busy} onClick={onRetry}>重试</button>
+        <button className="secondary-button" type="button" disabled={busy} onClick={onRetry}>{retryLabel}</button>
       </div>
     </div>
   );

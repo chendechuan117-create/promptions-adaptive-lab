@@ -2,11 +2,82 @@ import type { PrethinkTransport } from './prethink-transport';
 import type { CueResponse, RequestBody, Round } from './prethink-types';
 
 type RecordValue = Record<string, unknown>;
-type Pending = { resolve(value: unknown): void; reject(error: Error): void; cleanup(): void };
-type BridgeError = Error & { timedOut?: boolean; uncertain?: boolean; definiteRejection?: boolean };
+const businessErrors = {
+  BUDGET_EXHAUSTED: '本次试验的模型调用预算已用尽或未启用。',
+  INVALID_INPUT: '本次任务参数格式不正确或内容过长。',
+  PARENT_UNAVAILABLE: '上轮任务记录不存在、已过期或不匹配，请保留内容后重新开始。',
+  INVALID_SELECTION: '所选方向与上轮结果不匹配，请保留当前补充。',
+  REQUEST_CONFLICT: '请求标识与已有任务冲突，当前内容已保留。',
+  STALE_REQUEST: '请求已过期，未采用结果。',
+  CAPACITY: '当前任务记录容量已满，请稍后再试。',
+  BUSY: '当前请求较多，请稍后再试。',
+  TIMEOUT: '生成超时，输入和联想已保留。',
+  CANCELLED: '请求已取消或替换，当前内容已保留。',
+  GENERATION_FAILED: '未能生成完整联想方向，输入和联想已保留。',
+  CONFIGURATION: '服务配置不可用，当前内容已保留。',
+  LEDGER_UNAVAILABLE: '预算记录不可用，已停止新的模型调用。',
+} as const;
+type BusinessCode = keyof typeof businessErrors;
+type BridgeDiagnostic = {
+  method: 'ui/initialize' | 'tools/call' | 'ui/update-model-context' | 'ui/message' | 'unknown';
+  tool?: 'generate_prethink_cues' | 'cancel_prethink' | 'prepare_prethink_handoff';
+  code?: number;
+  businessCode?: BusinessCode;
+  category: 'method_not_found' | 'tool_not_found' | 'invalid_params' | 'invalid_request' | 'internal_error' | 'unknown_error' | 'tool_execution_error';
+};
+type Pending = { resolve(value: unknown): void; reject(error: Error): void; cleanup(): void; diagnostic: BridgeDiagnostic };
+type BridgeError = Error & { timedOut?: boolean; uncertain?: boolean; definiteRejection?: boolean; diagnostic?: BridgeDiagnostic };
 type AcceptedState = { clientId: string; requestId: string; goal: string; variant: string; rounds: Round[] };
 const object = (value: unknown): value is RecordValue => value !== null && typeof value === 'object' && !Array.isArray(value);
 const bridgeError = (message: string, extra: Partial<BridgeError> = {}): BridgeError => Object.assign(new Error(message), extra);
+
+// Only locally defined method/tool identifiers and integer codes are retained.
+// Host error messages/data can contain user input, URLs or credentials.
+function requestDiagnostic(method: string, params: RecordValue): BridgeDiagnostic {
+  const safeMethod = method === 'ui/initialize' || method === 'tools/call' || method === 'ui/update-model-context' || method === 'ui/message' ? method : 'unknown';
+  const tool = safeMethod === 'tools/call' && (params.name === 'generate_prethink_cues' || params.name === 'cancel_prethink' || params.name === 'prepare_prethink_handoff') ? params.name : undefined;
+  return { method: safeMethod, ...(tool ? { tool } : {}), category: 'unknown_error' };
+}
+
+function responseError(diagnostic: BridgeDiagnostic, value: unknown, toolError = false): BridgeError {
+  const code = !toolError && object(value) && Number.isSafeInteger(value.code) ? value.code as number : undefined;
+  // Some hosts use -32602 for a missing tool. Match only the entire known
+  // diagnostic shape; never retain or interpolate the host-supplied identifier.
+  const missingTool = diagnostic.method === 'tools/call' && (code === -32601 || code === -32602)
+    && object(value) && typeof value.message === 'string'
+    && (/^Tool [A-Za-z0-9_-]+ not found$/i.test(value.message) || /^Unknown tool: [A-Za-z0-9_-]+$/i.test(value.message));
+  const category: BridgeDiagnostic['category'] = toolError ? 'tool_execution_error'
+    : missingTool ? 'tool_not_found' : code === -32601 ? 'method_not_found' : code === -32602 ? 'invalid_params'
+      : code === -32600 || code === -32700 ? 'invalid_request' : code === -32603 ? 'internal_error' : 'unknown_error';
+  let businessCode: BusinessCode | undefined;
+  if (toolError && object(value) && Array.isArray(value.content)) {
+    for (const item of value.content) {
+      if (!object(item) || item.type !== 'text' || typeof item.text !== 'string' || item.text.length > 4096) continue;
+      try {
+        const parsed: unknown = JSON.parse(item.text);
+        if (object(parsed) && Object.keys(parsed).every(key => key === 'code' || key === 'error')
+          && typeof parsed.error === 'string' && typeof parsed.code === 'string'
+          && Object.hasOwn(businessErrors, parsed.code)) {
+          businessCode = parsed.code as BusinessCode;
+          break;
+        }
+      } catch { /* Unknown or non-JSON content is never reflected. */ }
+    }
+  }
+  const safe = { ...diagnostic, ...(code !== undefined ? { code } : {}), ...(businessCode ? { businessCode } : {}), category };
+  const stage = diagnostic.tool === 'generate_prethink_cues' ? '生成联想'
+    : diagnostic.tool === 'cancel_prethink' ? '取消生成'
+      : diagnostic.tool === 'prepare_prethink_handoff' ? '整理交接'
+        : diagnostic.method === 'ui/update-model-context' ? '更新交接上下文'
+          : diagnostic.method === 'ui/message' ? '发送交接消息' : '初始化卡片连接';
+  const classification = { method_not_found: '方法不支持', tool_not_found: '连接工具目录中找不到此工具，请刷新连接', invalid_params: '参数被拒绝', invalid_request: '协议请求被拒绝', internal_error: '内部错误', unknown_error: '原因未知', tool_execution_error: '工具执行失败' }[category];
+  const definiteRejection = category === 'method_not_found' || category === 'tool_not_found' || category === 'invalid_params' || category === 'invalid_request';
+  const detail = `${code !== undefined ? `错误码 ${code}；` : ''}${classification}`;
+  const advice = code === -32601 ? '请刷新插件连接的工具目录后再试。' : '当前内容已保留。';
+  return bridgeError(businessCode
+    ? `${stage}：${businessErrors[businessCode]}（${businessCode}）`
+    : `${stage}：${definiteRejection ? 'ChatGPT 未接受这次请求' : '这次请求未完成，执行状态尚未确认'}（${detail}）。${advice}`, { diagnostic: safe, definiteRejection });
+}
 
 /** Host-only transport. The component contains no provider key or external fetch. */
 export function createMcpTransport(): PrethinkTransport {
@@ -51,7 +122,7 @@ export function createMcpTransport(): PrethinkTransport {
       const timer = window.setTimeout(() => {
         pending.delete(id); cleanup(); reject(bridgeError('ChatGPT 连接响应超时，请保留当前内容。', { timedOut: true }));
       }, timeoutMs);
-      pending.set(id, { resolve, reject, cleanup });
+      pending.set(id, { resolve, reject, cleanup, diagnostic: requestDiagnostic(method, params) });
       signal?.addEventListener('abort', abort, { once: true });
       post({ id, method, params });
     });
@@ -84,12 +155,10 @@ export function createMcpTransport(): PrethinkTransport {
       const job = pending.get(message.id)!;
       pending.delete(message.id); job.cleanup();
       if (event.origin !== 'null') origin = event.origin;
-      if (message.error) job.reject(bridgeError('ChatGPT 未接受这次请求，请检查连接后重试。', { definiteRejection: true }));
+      if (message.error) job.reject(responseError(job.diagnostic, message.error));
       else if (!('result' in message)) job.reject(bridgeError('ChatGPT 返回了无法识别的响应。'));
       else if (object(message.result) && message.result.isError) {
-        const content = Array.isArray(message.result.content) ? message.result.content : [];
-        const text = content.find((item) => object(item) && item.type === 'text' && typeof item.text === 'string');
-        job.reject(bridgeError(object(text) ? String(text.text).slice(0, 240) : '这次请求未完成，当前内容仍保留。', { definiteRejection: true }));
+        job.reject(responseError(job.diagnostic, message.result, true));
       } else job.resolve(message.result);
       return;
     }
@@ -210,7 +279,8 @@ export function createMcpTransport(): PrethinkTransport {
         }, signal);
       } catch (error) {
         if (!(error instanceof Error && (error as BridgeError).definiteRejection)) {
-          throw bridgeError('发送结果尚未确认，请先查看 ChatGPT 正文，避免重复发送。', { uncertain: true });
+          const diagnostic = error instanceof Error ? (error as BridgeError).diagnostic : undefined;
+          throw bridgeError(`发送交接消息：发送结果尚未确认${diagnostic?.code !== undefined ? `（错误码 ${diagnostic.code}）` : ''}，请先查看 ChatGPT 正文，避免重复发送。`, { uncertain: true, ...(diagnostic ? { diagnostic } : {}) });
         }
         throw error;
       }

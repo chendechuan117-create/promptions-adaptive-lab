@@ -27,7 +27,8 @@ const token = randomBytes(24).toString('hex');
 const abort = new AbortController();
 const report = {
   passed: false, inspectorVersion: expectedVersion, modelCalls: 0,
-  generationAttempts: 0, blockedGenerationRequests: 0,
+  generationAttempts: 0, blockedGenerationRequests: 0, freeToolAttempts: 0,
+  evidenceBoundary: 'Local official Inspector host: rendering and free app-only tool routing; not ChatGPT authorization or mobile acceptance.',
   consoleErrors: [], consoleWarnings: [], pageErrors: [], cspViolations: [], failedRequests: [], httpErrors: [],
 };
 let temp, inspector, inspectorExit, inspectorFailure, browser, page, live, runtime;
@@ -109,6 +110,8 @@ try {
   runtime = createLiveRuntime({ maxCalls: 0, ledgerPath: join(temp, 'budget.json') });
   const run = runtime.run;
   runtime.run = (...input) => { report.generationAttempts++; return run(...input); };
+  const prepareHandoff = runtime.prepareHandoff;
+  runtime.prepareHandoff = (...input) => { report.freeToolAttempts++; return prepareHandoff(...input); };
   live = await startLiveServer({ port: 0, runtime, widgetHtml });
   const liveOrigin = `http://127.0.0.1:${live.address().port}`;
   const budget = async () => {
@@ -193,6 +196,30 @@ try {
   report.ready = true;
   report.generateDisabled = true;
   report.frames = page.frames().map(frame => safeUrl(frame.url()));
+  // Exercise app-only routing through the actual widget -> sandbox -> official
+  // host bridge. This sends no ui/message and never invokes a model generator.
+  const freeGoal = '组织一次公开读书交流活动';
+  const freeNote = '仅用于官方宿主免费工具通路检查';
+  const handoff = await widget.evaluate(({ goal, note }) => new Promise((resolveReply, rejectReply) => {
+    const id = `inspector-free-handoff-${crypto.randomUUID()}`;
+    const cleanup = () => { clearTimeout(timer); removeEventListener('message', receive); };
+    const receive = event => {
+      if (event.source !== window.parent || event.data?.jsonrpc !== '2.0' || event.data.id !== id || event.data.method) return;
+      cleanup();
+      if (event.data.error || event.data.result?.isError || !event.data.result) rejectReply(new Error('Official host rejected the free app-only tool call'));
+      else resolveReply(event.data.result.structuredContent);
+    };
+    const timer = setTimeout(() => { cleanup(); rejectReply(new Error('Official host free app-only tool call timed out')); }, 12_000);
+    addEventListener('message', receive);
+    window.parent.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: {
+      name: 'prepare_prethink_handoff', arguments: { clientId: crypto.randomUUID(), goal, parentRequestId: null, selected: [], note },
+    } }, '*');
+  }), { goal: freeGoal, note: freeNote });
+  assert.equal(handoff?.goal, freeGoal, 'App-only handoff lost the test goal');
+  assert.deepEqual(handoff?.rounds, [{ selected: [], note: freeNote }], 'App-only handoff lost the current draft note');
+  assert.ok(typeof handoff?.summary === 'string' && handoff.summary.includes(freeGoal) && handoff.summary.includes(freeNote) && handoff.summary.includes('不是事实'), 'App-only handoff summary contract mismatch');
+  assert.equal(report.freeToolAttempts, 1, 'Free app-only request did not reach the actual temporary MCP service exactly once');
+  report.freeAppOnlyTool = { name: 'prepare_prethink_handoff', passed: true, rounds: handoff.rounds.length };
   // Allow the next paint before recording the actual rendered widget.
   await widget.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
   report.budgetAfter = await budget();
@@ -248,6 +275,7 @@ try {
   console.log(JSON.stringify({
     passed: report.passed, inspectorVersion: report.inspectorVersion, ready: report.ready ?? false,
     modelCalls: report.modelCalls, generationAttempts: report.generationAttempts, blockedGenerationRequests: report.blockedGenerationRequests,
+    freeToolAttempts: report.freeToolAttempts, freeAppOnlyTool: report.freeAppOnlyTool, evidenceBoundary: report.evidenceBoundary,
     budgetBefore: report.budgetBefore, budgetAfter: report.budgetAfter,
     ...(report.error ? { error: report.error } : {}), ...(cleanupErrors.length ? { cleanupErrors } : {}),
   }));
